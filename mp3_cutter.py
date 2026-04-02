@@ -1,12 +1,13 @@
 import os
 import subprocess
 import math
+import re
 from pathlib import Path
 import msvcrt
 
 
 # Parameters
-SRC_DIR             = "d:/work/python/!tools/mp3_cutter/src1" # Directory to scan for audio files (including subfolders)
+SRC_DIR             = "d:/work/python/!tools/mp3_cutter/src" # Directory to scan for audio files (including subfolders)
 AUDIO_MAX_DURATION_SZ = 60*60  # seconds (1 hour)
 AUDIO_CUT_CHUNK_SZ    = 45*60  # seconds (30 minutes)
 SKIP_EXISTING       = True   # If True, skips files that already have a generated sub-folder
@@ -18,7 +19,7 @@ FFPROBE_PATH = "d:/PF/_Tools/ffmpeg/bin/ffprobe.exe"
 
 
 def find_audio_files(src_dir):
-  """Scans the directory and subdirectories for supported audio files."""
+  """Scans the directory and subdirectories for supported audio files and their .cue sheets."""
   audio_files = []
   directory = Path(src_dir)
   for path in directory.rglob("*"):
@@ -27,8 +28,67 @@ def find_audio_files(src_dir):
       potential_original = path.parent.parent / (path.parent.name + path.suffix)
       if potential_original.is_file():
         continue
-      audio_files.append(path)
+      
+      # Check for companion .cue file
+      cue_path = path.with_suffix(".cue")
+      if not cue_path.is_file():
+        cue_path = None
+        
+      audio_files.append((path, cue_path))
   return audio_files
+
+
+def convert_cue_time_to_seconds(time_str):
+  """Converts CUE MM:SS:FF format to total seconds (75 frames = 1 second)."""
+  parts = time_str.split(":")
+  if len(parts) != 3:
+    return 0.0
+  m = int(parts[0])
+  s = int(parts[1])
+  f = int(parts[2])
+  return m * 60 + s + f / 75.0
+
+
+def parse_cue_file(cue_path):
+  """Parses a .cue file to extract track information."""
+  tracks = []
+  current_track = None
+  
+  # Try reading with common encodings
+  content = ""
+  for enc in ["utf-8-sig", "latin-1", "cp1252", "cp1251"]:
+    try:
+      with open(cue_path, "r", encoding=enc) as f:
+        content = f.read()
+      break
+    except (UnicodeDecodeError, FileNotFoundError):
+      continue
+  
+  if not content:
+    return []
+
+  for line in content.splitlines():
+    line = line.strip()
+    if line.startswith("TRACK"):
+      parts = line.split()
+      if len(parts) >= 2:
+        current_track = {"index": parts[1], "title": "", "start": 0.0}
+        tracks.append(current_track)
+    elif line.startswith("TITLE") and current_track:
+      match = re.search(r'TITLE\s+"?([^"]+)"?', line)
+      if match:
+        current_track["title"] = match.group(1)
+    elif line.startswith("INDEX 01") and current_track:
+      parts = line.split()
+      if len(parts) >= 3:
+        current_track["start"] = convert_cue_time_to_seconds(parts[2])
+        
+  return tracks
+
+
+def sanitize_filename(name):
+  """Removes invalid characters from filenames."""
+  return re.sub(r'[\\/*?:"<>|]', "", name).strip()
 
 
 def get_duration(file_path):
@@ -84,6 +144,57 @@ def cut_audio(file_path, duration, chunk_size):
       print(f"  -> Error cutting chunk {i + 1} for {file_path.name}: {e}")
 
 
+def cut_audio_by_cue(file_path, tracks, total_duration):
+  """Cuts the audio file based on CUE sheet tracks."""
+  pad_length = len(str(len(tracks)))
+  
+  output_dir = file_path.parent / file_path.stem
+  output_dir.mkdir(parents=True, exist_ok=True)
+  
+  print(f"Cutting '{file_path.name}' into {len(tracks)} track(s) using CUE sheet in directory '{output_dir.name}'")
+  
+  for i, track in enumerate(tracks):
+    start_time = track["start"]
+    if i < len(tracks) - 1:
+      end_time = tracks[i+1]["start"]
+      duration = end_time - start_time
+    else:
+      duration = total_duration - start_time
+      
+    if duration <= 0:
+      continue
+      
+    index_str = track["index"].zfill(pad_length)
+    # Requested format: {index_str} {file_path.name} {track_title}
+    # We strip the original extension and add it at the very end.
+    base_name = file_path.name
+    track_title = track["title"]
+    
+    output_filename = f"{index_str} {base_name} {track_title}".strip()
+    # If the track title resulted in name ending with same extension, don't double it
+    if not output_filename.lower().endswith(file_path.suffix.lower()):
+        output_filename += file_path.suffix
+        
+    output_path = output_dir / sanitize_filename(output_filename)
+    
+    cmd = [
+      FFMPEG_PATH,
+      "-v", "error",
+      "-y",
+      "-i", str(file_path),
+      "-ss", str(start_time),
+      "-t", str(duration),
+      "-c", "copy",
+      str(output_path)
+    ]
+    
+    try:
+      subprocess.run(cmd, check=True)
+      print(f"  -> {output_filename}")
+    except subprocess.CalledProcessError as e:
+      print(f"  -> Error cutting track {track['index']} ({track['title']}): {e}")
+
+
 def main():
   if not os.path.isdir(SRC_DIR):
     print(f"Error: Directory '{SRC_DIR}' does not exist.")
@@ -93,21 +204,36 @@ def main():
   print(f"Found {len(audio_files)} audio file(s) in '{SRC_DIR}'.")
 
   files_to_cut = []
-  for audio in audio_files:
+  for audio, cue_path in audio_files:
     duration = get_duration(audio)
-    if duration > AUDIO_MAX_DURATION_SZ:
+    
+    # Decision logic: if duration > MAX or if CUE exists
+    should_cut = duration > AUDIO_MAX_DURATION_SZ or cue_path is not None
+    
+    if should_cut:
       output_dir = audio.parent / audio.stem
       if SKIP_EXISTING and output_dir.is_dir():
         print(f"File '{audio.name}' skip: folder already exists")
       else:
-        print(f"File '{audio.name}' duration: {duration:.2f}s (EXCEEDS {AUDIO_MAX_DURATION_SZ}s - will be cut)")
-        files_to_cut.append((audio, duration))
+        if cue_path:
+          print(f"File '{audio.name}' with CUE sheet found - will be cut by tracks")
+        else:
+          print(f"File '{audio.name}' duration: {duration:.2f}s (EXCEEDS {AUDIO_MAX_DURATION_SZ}s - will be cut)")
+        files_to_cut.append((audio, duration, cue_path))
     else:
       print(f"File '{audio.name}' duration: {duration:.2f}s (OK)")
 
   print(f"\nProceeding to cut {len(files_to_cut)} file(s)...")
-  for audio, duration in files_to_cut:
-    cut_audio(audio, duration, AUDIO_CUT_CHUNK_SZ)
+  for audio, duration, cue_path in files_to_cut:
+    if cue_path:
+      tracks = parse_cue_file(cue_path)
+      if tracks:
+        cut_audio_by_cue(audio, tracks, duration)
+      else:
+        print(f"Warning: Could not parse CUE file '{cue_path.name}', falling back to fixed chunks")
+        cut_audio(audio, duration, AUDIO_CUT_CHUNK_SZ)
+    else:
+      cut_audio(audio, duration, AUDIO_CUT_CHUNK_SZ)
 
   #input("\nPress Enter to exit...")
   print("Press any key to exit...")
