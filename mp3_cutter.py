@@ -28,12 +28,12 @@ def find_audio_files(src_dir):
       potential_original = path.parent.parent / (path.parent.name + path.suffix)
       if potential_original.is_file():
         continue
-      
+
       # Check for companion .cue file
       cue_path = path.with_suffix(".cue")
       if not cue_path.is_file():
         cue_path = None
-        
+
       audio_files.append((path, cue_path))
   return audio_files
 
@@ -53,7 +53,7 @@ def parse_cue_file(cue_path):
   """Parses a .cue file to extract track information."""
   tracks = []
   current_track = None
-  
+
   # Try reading with common encodings
   content = ""
   for enc in ["utf-8-sig", "latin-1", "cp1252", "cp1251"]:
@@ -63,7 +63,7 @@ def parse_cue_file(cue_path):
       break
     except (UnicodeDecodeError, FileNotFoundError):
       continue
-  
+
   if not content:
     return []
 
@@ -82,7 +82,7 @@ def parse_cue_file(cue_path):
       parts = line.split()
       if len(parts) >= 3:
         current_track["start"] = convert_cue_time_to_seconds(parts[2])
-        
+
   return tracks
 
 
@@ -147,12 +147,12 @@ def cut_audio(file_path, duration, chunk_size):
 def cut_audio_by_cue(file_path, tracks, total_duration):
   """Cuts the audio file based on CUE sheet tracks."""
   pad_length = len(str(len(tracks)))
-  
+
   output_dir = file_path.parent / file_path.stem
   output_dir.mkdir(parents=True, exist_ok=True)
-  
+
   print(f"Cutting '{file_path.name}' into {len(tracks)} track(s) using CUE sheet in directory '{output_dir.name}'")
-  
+
   for i, track in enumerate(tracks):
     start_time = track["start"]
     if i < len(tracks) - 1:
@@ -160,23 +160,21 @@ def cut_audio_by_cue(file_path, tracks, total_duration):
       duration = end_time - start_time
     else:
       duration = total_duration - start_time
-      
+
     if duration <= 0:
       continue
-      
+
     index_str = track["index"].zfill(pad_length)
     # Requested format: {index_str} {file_path.name} {track_title}
-    # We strip the original extension and add it at the very end.
-    base_name = file_path.name
+    # We use the stem (name without extension) in the middle and add suffix at the end.
+    base_stem = file_path.stem
     track_title = track["title"]
-    
-    output_filename = f"{index_str} {base_name} {track_title}".strip()
-    # If the track title resulted in name ending with same extension, don't double it
-    if not output_filename.lower().endswith(file_path.suffix.lower()):
-        output_filename += file_path.suffix
-        
+
+    output_filename = f"{index_str} {base_stem} {track_title}".strip()
+    output_filename += file_path.suffix
+
     output_path = output_dir / sanitize_filename(output_filename)
-    
+
     cmd = [
       FFMPEG_PATH,
       "-v", "error",
@@ -187,7 +185,7 @@ def cut_audio_by_cue(file_path, tracks, total_duration):
       "-c", "copy",
       str(output_path)
     ]
-    
+
     try:
       subprocess.run(cmd, check=True)
       print(f"  -> {output_filename}")
@@ -206,10 +204,10 @@ def main():
   files_to_cut = []
   for audio, cue_path in audio_files:
     duration = get_duration(audio)
-    
+
     # Decision logic: if duration > MAX or if CUE exists
     should_cut = duration > AUDIO_MAX_DURATION_SZ or cue_path is not None
-    
+
     if should_cut:
       output_dir = audio.parent / audio.stem
       if SKIP_EXISTING and output_dir.is_dir():
