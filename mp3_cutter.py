@@ -2,15 +2,17 @@ import os
 import subprocess
 import math
 from pathlib import Path
+import msvcrt
 
-# Paths to FFmpeg tools provided by user
-FFMPEG_PATH = "d:/PF/_Tools/ffmpeg/bin/ffmpeg.exe"
-FFPROBE_PATH = "d:/PF/_Tools/ffmpeg/bin/ffprobe.exe"
 
 # Parameters
+SRC_DIR             = "d:/work/python/!tools/mp3_cutter/src" # Directory to scan for MP3 files (including subfolders)
 MP3_MAX_DURATION_SZ = 60*60  # seconds (1 hour)
-MP3_CUT_CHUNK_SZ    = 60*45  # seconds (45 minutes)
-SRC_DIR             = "d:/work/python/!tools/mp3_cutter/src/" # Directory to scan for MP3 files (including subfolders)
+MP3_CUT_CHUNK_SZ    = 60*30  # seconds (45 minutes)
+SKIP_EXISTING       = True   # If True, skips files that already have a generated sub-folder
+# Paths to FFmpeg tools provided by user
+FFMPEG_PATH  = "d:/PF/_Tools/ffmpeg/bin/ffmpeg.exe"
+FFPROBE_PATH = "d:/PF/_Tools/ffmpeg/bin/ffprobe.exe"
 
 
 def find_mp3_files(src_dir):
@@ -55,7 +57,7 @@ def cut_mp3(file_path, duration, chunk_size):
   for i in range(total_chunks):
     start_time = i * chunk_size
     index_str = str(i + 1).zfill(pad_length)
-    output_filename = f"{index_str}-{file_path.name}"
+    output_filename = f"{index_str} {file_path.name}"
     output_path = output_dir / output_filename
 
     cmd = [
@@ -88,8 +90,12 @@ def main():
   for mp3 in mp3_files:
     duration = get_duration(mp3)
     if duration > MP3_MAX_DURATION_SZ:
-      print(f"File '{mp3.name}' duration: {duration:.2f}s (EXCEEDS {MP3_MAX_DURATION_SZ}s - will be cut)")
-      files_to_cut.append((mp3, duration))
+      output_dir = mp3.parent / mp3.stem
+      if SKIP_EXISTING and output_dir.is_dir():
+        print(f"File '{mp3.name}' skip: folder already exists (SKIP_EXISTING=True)")
+      else:
+        print(f"File '{mp3.name}' duration: {duration:.2f}s (EXCEEDS {MP3_MAX_DURATION_SZ}s - will be cut)")
+        files_to_cut.append((mp3, duration))
     else:
       print(f"File '{mp3.name}' duration: {duration:.2f}s (OK)")
 
@@ -97,6 +103,9 @@ def main():
   for mp3, duration in files_to_cut:
     cut_mp3(mp3, duration, MP3_CUT_CHUNK_SZ)
 
+  #input("\nPress Enter to exit...")
+  print("Press any key to exit...")
+  msvcrt.getch()
 
 if __name__ == "__main__":
   main()

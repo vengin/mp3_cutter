@@ -11,6 +11,7 @@ All parameters are configurable at the top of `mp3_cutter.py`:
 - `SRC_DIR`: The root directory to scan for `.mp3` files (includes subfolders).
 - `MP3_MAX_DURATION_SZ`: Maximum duration threshold (in seconds). Only files exceeding this length will be split.
 - `MP3_CUT_CHUNK_SZ`: The duration of each split chunk (in seconds).
+- `SKIP_EXISTING`: If True, gracefully skip re-cutting files that already contain a populated folder.
 
 ## Usage
 Simply run the script with no arguments:
