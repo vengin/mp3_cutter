@@ -6,31 +6,33 @@ import msvcrt
 
 
 # Parameters
-SRC_DIR             = "d:/work/python/!tools/mp3_cutter/src" # Directory to scan for MP3 files (including subfolders)
-MP3_MAX_DURATION_SZ = 60*60  # seconds (1 hour)
-MP3_CUT_CHUNK_SZ    = 60*30  # seconds (45 minutes)
+SRC_DIR             = "d:/work/python/!tools/mp3_cutter/src1" # Directory to scan for audio files (including subfolders)
+AUDIO_MAX_DURATION_SZ = 60*60  # seconds (1 hour)
+AUDIO_CUT_CHUNK_SZ    = 45*60  # seconds (30 minutes)
 SKIP_EXISTING       = True   # If True, skips files that already have a generated sub-folder
+AUDIO_EXTENSIONS    = {".mp3", ".m4b", ".m4a", ".wav", ".flac", ".ogg", ".aac"}
+
 # Paths to FFmpeg tools provided by user
 FFMPEG_PATH  = "d:/PF/_Tools/ffmpeg/bin/ffmpeg.exe"
 FFPROBE_PATH = "d:/PF/_Tools/ffmpeg/bin/ffprobe.exe"
 
 
-def find_mp3_files(src_dir):
-  """Scans the directory and subdirectories for .mp3 files."""
-  mp3_files = []
+def find_audio_files(src_dir):
+  """Scans the directory and subdirectories for supported audio files."""
+  audio_files = []
   directory = Path(src_dir)
-  for path in directory.rglob("*.mp3"):
-    if path.is_file():
+  for path in directory.rglob("*"):
+    if path.is_file() and path.suffix.lower() in AUDIO_EXTENSIONS:
       # Filter out cut output files by checking if they are inside an output folder
-      parent_mp3 = path.parent.parent / (path.parent.name + ".mp3")
-      if parent_mp3.is_file():
+      potential_original = path.parent.parent / (path.parent.name + path.suffix)
+      if potential_original.is_file():
         continue
-      mp3_files.append(path)
-  return mp3_files
+      audio_files.append(path)
+  return audio_files
 
 
 def get_duration(file_path):
-  """Uses ffprobe to obtain the duration of an MP3 file in seconds."""
+  """Uses ffprobe to obtain the duration of an audio file in seconds."""
   cmd = [
     FFPROBE_PATH,
     "-v", "error",
@@ -47,8 +49,8 @@ def get_duration(file_path):
     return 0.0
 
 
-def cut_mp3(file_path, duration, chunk_size):
-  """Cuts the MP3 file into smaller chunks."""
+def cut_audio(file_path, duration, chunk_size):
+  """Cuts the audio file into smaller chunks."""
   total_chunks = math.ceil(duration / chunk_size)
   pad_length = len(str(total_chunks))
 
@@ -87,25 +89,25 @@ def main():
     print(f"Error: Directory '{SRC_DIR}' does not exist.")
     return
 
-  mp3_files = find_mp3_files(SRC_DIR)
-  print(f"Found {len(mp3_files)} MP3 file(s) in '{SRC_DIR}'.")
+  audio_files = find_audio_files(SRC_DIR)
+  print(f"Found {len(audio_files)} audio file(s) in '{SRC_DIR}'.")
 
   files_to_cut = []
-  for mp3 in mp3_files:
-    duration = get_duration(mp3)
-    if duration > MP3_MAX_DURATION_SZ:
-      output_dir = mp3.parent / mp3.stem
+  for audio in audio_files:
+    duration = get_duration(audio)
+    if duration > AUDIO_MAX_DURATION_SZ:
+      output_dir = audio.parent / audio.stem
       if SKIP_EXISTING and output_dir.is_dir():
-        print(f"File '{mp3.name}' skip: folder already exists")
+        print(f"File '{audio.name}' skip: folder already exists")
       else:
-        print(f"File '{mp3.name}' duration: {duration:.2f}s (EXCEEDS {MP3_MAX_DURATION_SZ}s - will be cut)")
-        files_to_cut.append((mp3, duration))
+        print(f"File '{audio.name}' duration: {duration:.2f}s (EXCEEDS {AUDIO_MAX_DURATION_SZ}s - will be cut)")
+        files_to_cut.append((audio, duration))
     else:
-      print(f"File '{mp3.name}' duration: {duration:.2f}s (OK)")
+      print(f"File '{audio.name}' duration: {duration:.2f}s (OK)")
 
   print(f"\nProceeding to cut {len(files_to_cut)} file(s)...")
-  for mp3, duration in files_to_cut:
-    cut_mp3(mp3, duration, MP3_CUT_CHUNK_SZ)
+  for audio, duration in files_to_cut:
+    cut_audio(audio, duration, AUDIO_CUT_CHUNK_SZ)
 
   #input("\nPress Enter to exit...")
   print("Press any key to exit...")
