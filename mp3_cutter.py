@@ -21,6 +21,10 @@ def find_mp3_files(src_dir):
   directory = Path(src_dir)
   for path in directory.rglob("*.mp3"):
     if path.is_file():
+      # Filter out cut output files by checking if they are inside an output folder
+      parent_mp3 = path.parent.parent / (path.parent.name + ".mp3")
+      if parent_mp3.is_file():
+        continue
       mp3_files.append(path)
   return mp3_files
 
@@ -73,7 +77,7 @@ def cut_mp3(file_path, duration, chunk_size):
 
     try:
       subprocess.run(cmd, check=True)
-      print(f"  -> Created {output_filename}")
+      print(f"  -> {output_filename}")
     except subprocess.CalledProcessError as e:
       print(f"  -> Error cutting chunk {i + 1} for {file_path.name}: {e}")
 
@@ -92,7 +96,7 @@ def main():
     if duration > MP3_MAX_DURATION_SZ:
       output_dir = mp3.parent / mp3.stem
       if SKIP_EXISTING and output_dir.is_dir():
-        print(f"File '{mp3.name}' skip: folder already exists (SKIP_EXISTING=True)")
+        print(f"File '{mp3.name}' skip: folder already exists")
       else:
         print(f"File '{mp3.name}' duration: {duration:.2f}s (EXCEEDS {MP3_MAX_DURATION_SZ}s - will be cut)")
         files_to_cut.append((mp3, duration))
