@@ -7,11 +7,11 @@ import msvcrt
 
 
 # Parameters
-SRC_DIR             = "d:/work/python/!tools/mp3_cutter/src" # Directory to scan for audio files (including subfolders)
+SRC_DIR               = "src" # Directory to scan for audio files (relative to script or absolute)
 AUDIO_MAX_DURATION_SZ = 60*60  # seconds (1 hour)
 AUDIO_CUT_CHUNK_SZ    = 45*60  # seconds (30 minutes)
-SKIP_EXISTING       = True   # If True, skips files that already have a generated sub-folder
-AUDIO_EXTENSIONS    = {".mp3", ".m4b", ".m4a", ".wav", ".flac", ".ogg", ".aac"}
+SKIP_EXISTING         = True   # If True, skips files that already have a generated sub-folder
+AUDIO_EXTENSIONS      = {".mp3", ".m4b", ".m4a", ".wav", ".flac", ".ogg", ".aac"}
 
 # Paths to FFmpeg tools provided by user
 FFMPEG_PATH  = "d:/PF/_Tools/ffmpeg/bin/ffmpeg.exe"
@@ -170,7 +170,7 @@ def cut_audio_by_cue(file_path, tracks, total_duration):
     base_stem = file_path.stem
     track_title = track["title"]
 
-    output_filename = f"{index_str} {base_stem} {track_title}".strip()
+    output_filename = f"{index_str} {base_stem}, {track_title}".strip()
     output_filename += file_path.suffix
 
     output_path = output_dir / sanitize_filename(output_filename)
@@ -194,12 +194,17 @@ def cut_audio_by_cue(file_path, tracks, total_duration):
 
 
 def main():
-  if not os.path.isdir(SRC_DIR):
-    print(f"Error: Directory '{SRC_DIR}' does not exist.")
+  # Resolve SRC_DIR relative to the script directory if it's not absolute
+  abs_src_dir = Path(SRC_DIR)
+  if not abs_src_dir.is_absolute():
+    abs_src_dir = (Path(__file__).parent / SRC_DIR).resolve()
+
+  if not abs_src_dir.is_dir():
+    print(f"Error: Directory '{abs_src_dir}' does not exist.")
     return
 
-  audio_files = find_audio_files(SRC_DIR)
-  print(f"Found {len(audio_files)} audio file(s) in '{SRC_DIR}'.")
+  audio_files = find_audio_files(abs_src_dir)
+  print(f"Found {len(audio_files)} audio file(s) in '{abs_src_dir}'.")
 
   files_to_cut = []
   for audio, cue_path in audio_files:
