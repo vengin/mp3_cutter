@@ -6,15 +6,16 @@ A script to recursively scan a directory for MP3 files and split them into equal
 - Python 3
 - FFmpeg and FFprobe (Paths are configured at the top of `mp3_cutter.py`).
 
-## Usage
-Run the script passing the required arguments:
-- `--scr-dir`: The root directory to scan for `.mp3` files (includes subfolders).
-- `--max-duration`: Maximum duration threshold (in seconds). Only files exceeding this length will be split.
-- `--chunk-size`: The duration of each split chunk (in seconds).
+## Configuration
+All parameters are configurable at the top of `mp3_cutter.py`:
+- `SRC_DIR`: The root directory to scan for `.mp3` files (includes subfolders).
+- `MP3_MAX_DURATION_SZ`: Maximum duration threshold (in seconds). Only files exceeding this length will be split.
+- `MP3_CUT_CHUNK_SZ`: The duration of each split chunk (in seconds).
 
-### Example
+## Usage
+Simply run the script with no arguments:
 ```cmd
-python mp3_cutter.py --scr-dir "C:\Music\Podcasts" --max-duration 3600 --chunk-size 600
+python mp3_cutter.py
 ```
 
 ## Details

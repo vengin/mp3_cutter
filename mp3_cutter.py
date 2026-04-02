@@ -1,5 +1,4 @@
 import os
-import argparse
 import subprocess
 import math
 from pathlib import Path
@@ -8,34 +7,16 @@ from pathlib import Path
 FFMPEG_PATH = "d:/PF/_Tools/ffmpeg/bin/ffmpeg.exe"
 FFPROBE_PATH = "d:/PF/_Tools/ffmpeg/bin/ffprobe.exe"
 
-
-def setup_args():
-  parser = argparse.ArgumentParser(description="MP3 Cutter Script")
-  parser.add_argument(
-    "--scr-dir",
-    type=str,
-    required=True,
-    help="Directory to scan for MP3 files (including subfolders)."
-  )
-  parser.add_argument(
-    "--max-duration",
-    type=float,
-    required=True,
-    help="Maximum duration threshold in seconds (MP3_MAX_DURATION_SZ)."
-  )
-  parser.add_argument(
-    "--chunk-size",
-    type=float,
-    required=True,
-    help="Chunk size for cutting in seconds (MP3_CUT_CHUNK_SZ)."
-  )
-  return parser.parse_args()
+# Parameters
+MP3_MAX_DURATION_SZ = 60*60  # seconds (1 hour)
+MP3_CUT_CHUNK_SZ    = 60*45  # seconds (45 minutes)
+SRC_DIR             = "d:/work/python/!tools/mp3_cutter/src/" # Directory to scan for MP3 files (including subfolders)
 
 
-def find_mp3_files(scr_dir):
+def find_mp3_files(src_dir):
   """Scans the directory and subdirectories for .mp3 files."""
   mp3_files = []
-  directory = Path(scr_dir)
+  directory = Path(src_dir)
   for path in directory.rglob("*.mp3"):
     if path.is_file():
       mp3_files.append(path)
@@ -64,19 +45,19 @@ def cut_mp3(file_path, duration, chunk_size):
   """Cuts the MP3 file into smaller chunks."""
   total_chunks = math.ceil(duration / chunk_size)
   pad_length = len(str(total_chunks))
-  
+
   # Create directory with the same name as the file (without extension)
   output_dir = file_path.parent / file_path.stem
   output_dir.mkdir(parents=True, exist_ok=True)
-  
+
   print(f"Cutting '{file_path.name}' into {total_chunks} chunk(s) in directory '{output_dir.name}'")
-  
+
   for i in range(total_chunks):
     start_time = i * chunk_size
     index_str = str(i + 1).zfill(pad_length)
     output_filename = f"{index_str}-{file_path.name}"
     output_path = output_dir / output_filename
-    
+
     cmd = [
       FFMPEG_PATH,
       "-v", "error",
@@ -87,7 +68,7 @@ def cut_mp3(file_path, duration, chunk_size):
       "-c", "copy",
       str(output_path)
     ]
-    
+
     try:
       subprocess.run(cmd, check=True)
       print(f"  -> Created {output_filename}")
@@ -96,27 +77,25 @@ def cut_mp3(file_path, duration, chunk_size):
 
 
 def main():
-  args = setup_args()
-
-  if not os.path.isdir(args.scr_dir):
-    print(f"Error: Directory '{args.scr_dir}' does not exist.")
+  if not os.path.isdir(SRC_DIR):
+    print(f"Error: Directory '{SRC_DIR}' does not exist.")
     return
 
-  mp3_files = find_mp3_files(args.scr_dir)
-  print(f"Found {len(mp3_files)} MP3 file(s) in '{args.scr_dir}'.")
+  mp3_files = find_mp3_files(SRC_DIR)
+  print(f"Found {len(mp3_files)} MP3 file(s) in '{SRC_DIR}'.")
 
   files_to_cut = []
   for mp3 in mp3_files:
     duration = get_duration(mp3)
-    if duration > args.max_duration:
-      print(f"File '{mp3.name}' duration: {duration:.2f}s (EXCEEDS {args.max_duration}s - will be cut)")
+    if duration > MP3_MAX_DURATION_SZ:
+      print(f"File '{mp3.name}' duration: {duration:.2f}s (EXCEEDS {MP3_MAX_DURATION_SZ}s - will be cut)")
       files_to_cut.append((mp3, duration))
     else:
       print(f"File '{mp3.name}' duration: {duration:.2f}s (OK)")
 
   print(f"\nProceeding to cut {len(files_to_cut)} file(s)...")
   for mp3, duration in files_to_cut:
-    cut_mp3(mp3, duration, args.chunk_size)
+    cut_mp3(mp3, duration, MP3_CUT_CHUNK_SZ)
 
 
 if __name__ == "__main__":
