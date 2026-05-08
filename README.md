@@ -29,5 +29,6 @@ python mp3_cutter.py
 ## Details
 - Each split chunk will be saved inside a new folder created with the same name as the original audio file.
 - **Filename Format (Fixed Size)**: `{index_str} {original_filename}`.
-- **Filename Format (CUE based)**: `{index_str} {original_filename} {track_title}`.
-- Cutting is done securely without re-encoding via `ffmpeg -c copy`.
+- **Filename Format (CUE based)**: `{index_str} {original_filename}, {track_title}`.
+- Cutting is done securely and at maximum speed without re-encoding via `ffmpeg -c copy`.
+- The script uses the FFmpeg `segment` muxer to process the entire audio file in a single pass (spawning only one process per file), making the cutting process almost instantaneous.
