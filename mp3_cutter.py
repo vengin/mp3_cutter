@@ -110,7 +110,7 @@ def get_duration(file_path):
 
 
 def cut_audio(file_path, duration, chunk_size):
-  """Cuts the audio file into smaller chunks."""
+  """Cuts the audio file into smaller chunks using the segment muxer."""
   total_chunks = math.ceil(duration / chunk_size)
   pad_length = len(str(total_chunks))
 
@@ -120,32 +120,31 @@ def cut_audio(file_path, duration, chunk_size):
 
   print(f"Cutting '{file_path.name}' into {total_chunks} chunk(s) in directory '{output_dir.name}'")
 
-  for i in range(total_chunks):
-    start_time = i * chunk_size
-    index_str = str(i + 1).zfill(pad_length)
-    output_filename = f"{index_str} {file_path.name}"
-    output_path = output_dir / output_filename
+  index_fmt = f"%0{pad_length}d"
+  output_filename = f"{index_fmt} {file_path.name}"
+  output_path = output_dir / output_filename
 
-    cmd = [
-      FFMPEG_PATH,
-      "-v", "error",
-      "-y",  # Overwrite output files without asking
-      "-i", str(file_path),
-      "-ss", str(start_time),
-      "-t", str(chunk_size),
-      "-c", "copy",
-      str(output_path)
-    ]
+  cmd = [
+    FFMPEG_PATH,
+    "-v", "error",
+    "-y",  # Overwrite output files without asking
+    "-i", str(file_path),
+    "-f", "segment",
+    "-segment_time", str(chunk_size),
+    "-segment_start_number", "1",
+    "-c", "copy",
+    str(output_path)
+  ]
 
-    try:
-      subprocess.run(cmd, check=True)
-      print(f"  -> {output_filename}")
-    except subprocess.CalledProcessError as e:
-      print(f"  -> Error cutting chunk {i + 1} for {file_path.name}: {e}")
+  try:
+    subprocess.run(cmd, check=True)
+    print(f"  -> Successfully cut into {total_chunks} chunks.")
+  except subprocess.CalledProcessError as e:
+    print(f"  -> Error cutting chunks for {file_path.name}: {e}")
 
 
 def cut_audio_by_cue(file_path, tracks, total_duration):
-  """Cuts the audio file based on CUE sheet tracks."""
+  """Cuts the audio file based on CUE sheet tracks using the segment muxer."""
   pad_length = len(str(len(tracks)))
 
   output_dir = file_path.parent / file_path.stem
@@ -153,44 +152,48 @@ def cut_audio_by_cue(file_path, tracks, total_duration):
 
   print(f"Cutting '{file_path.name}' into {len(tracks)} track(s) using CUE sheet in directory '{output_dir.name}'")
 
-  for i, track in enumerate(tracks):
-    start_time = track["start"]
-    if i < len(tracks) - 1:
-      end_time = tracks[i+1]["start"]
-      duration = end_time - start_time
-    else:
-      duration = total_duration - start_time
+  split_times = [str(track["start"]) for track in tracks[1:]]
+  segment_times_str = ",".join(split_times)
 
-    if duration <= 0:
-      continue
+  temp_pattern = output_dir / f"temp_%0{pad_length}d{file_path.suffix}"
 
-    index_str = track["index"].zfill(pad_length)
-    # Requested format: {index_str} {file_path.name} {track_title}
-    # We use the stem (name without extension) in the middle and add suffix at the end.
-    base_stem = file_path.stem
-    track_title = track["title"]
+  cmd = [
+    FFMPEG_PATH,
+    "-v", "error",
+    "-y",
+    "-i", str(file_path),
+    "-f", "segment",
+  ]
+  if segment_times_str:
+    cmd.extend(["-segment_times", segment_times_str])
+  cmd.extend([
+    "-segment_start_number", "1",
+    "-c", "copy",
+    str(temp_pattern)
+  ])
 
-    output_filename = f"{index_str} {base_stem}, {track_title}".strip()
-    output_filename += file_path.suffix
+  try:
+    subprocess.run(cmd, check=True)
 
-    output_path = output_dir / sanitize_filename(output_filename)
+    for i, track in enumerate(tracks):
+      index_str = track["index"].zfill(pad_length)
+      base_stem = file_path.stem
+      track_title = track["title"]
 
-    cmd = [
-      FFMPEG_PATH,
-      "-v", "error",
-      "-y",
-      "-i", str(file_path),
-      "-ss", str(start_time),
-      "-t", str(duration),
-      "-c", "copy",
-      str(output_path)
-    ]
+      output_filename = f"{index_str} {base_stem}, {track_title}".strip()
+      output_filename += file_path.suffix
 
-    try:
-      subprocess.run(cmd, check=True)
-      print(f"  -> {output_filename}")
-    except subprocess.CalledProcessError as e:
-      print(f"  -> Error cutting track {track['index']} ({track['title']}): {e}")
+      output_path = output_dir / sanitize_filename(output_filename)
+      temp_file = output_dir / f"temp_{str(i+1).zfill(pad_length)}{file_path.suffix}"
+
+      if temp_file.exists():
+        temp_file.replace(output_path)
+        print(f"  -> {output_filename}")
+      else:
+        print(f"  -> Warning: Segment file for track {track['index']} not found.")
+
+  except subprocess.CalledProcessError as e:
+    print(f"  -> Error cutting by CUE for {file_path.name}: {e}")
 
 
 def main():
